@@ -1,0 +1,15 @@
+version: v2
+managed:
+  enabled: true
+  go_package_prefix:
+    default: github.com/18395093096/classisland-mgmt-server/gen/go
+plugins:
+  - local: protoc-gen-go
+    out: ../gen/go
+    opt:
+      - paths=source_relative
+  - local: protoc-gen-go-grpc
+    out: ../gen/go
+    opt:
+      - paths=source_relative
+      - require_unimplemented_servers=false

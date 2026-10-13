@@ -1,0 +1,6 @@
+{
+    "ManagementServerKind": 1,
+    "ManagementServer": "http://192.168.1.10:50050",
+    "ManagementServerGrpc": "http://192.168.1.10:50051",
+    "ClassIdentity": "高一1班"
+}

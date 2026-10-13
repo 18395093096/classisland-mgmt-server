@@ -1,0 +1,18 @@
+# 编译产物
+/server.exe
+/server
+/cims-server.exe
+/dist/
+/bin/
+
+# 运行时数据（数据库、密钥、上传的配置）
+/data/
+*.db
+*.db-wal
+*.db-shm
+config.json
+
+# 本地环境
+.env
+.vscode/
+.idea/

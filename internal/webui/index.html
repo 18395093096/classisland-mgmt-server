@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClassIsland 集控管理控制台</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --line:#e3e6ea; --text:#1f2328; --muted:#6b7280;
+    --brand:#2563eb; --brand-weak:#eaf1ff; --ok:#0f9960; --danger:#b42318;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  header{background:var(--card);border-bottom:1px solid var(--line);padding:14px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:5}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  .badge{background:var(--brand-weak);color:var(--brand);border-radius:999px;padding:2px 10px;font-size:12px}
+  main{max-width:1240px;margin:0 auto;padding:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  .card > h2{font-size:15px;margin:0 0 12px;font-weight:600}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  input,select,textarea,button{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--text)}
+  textarea{width:100%;min-height:200px;font-family:Consolas,Monaco,monospace;font-size:12px}
+  button{cursor:pointer;background:var(--brand);color:#fff;border-color:var(--brand)}
+  button.ghost{background:#fff;color:var(--text);border-color:var(--line)}
+  button.danger{background:#fff;color:var(--danger);border-color:#f0c7c2}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:middle}
+  th{color:var(--muted);font-weight:600}
+  .tabs{display:flex;gap:6px;margin-bottom:14px}
+  .tab{padding:6px 14px;border:1px solid var(--line);border-radius:999px;background:#fff;cursor:pointer}
+  .tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .muted{color:var(--muted)}
+  /* 必须 !important：#loginMask 等 ID 选择器自带 display，
+     优先级高于 .hidden，不加 !important 隐藏类不会生效 */
+  .hidden{display:none !important}
+  .mono{font-family:Consolas,Monaco,monospace;font-size:12px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;border:1px solid var(--line)}
+  .pill.on{color:var(--ok);border-color:#bfe3d0;background:#effaf5}
+  .pill.off{color:var(--muted);background:#f3f4f6}
+  table.grid th,table.grid td{text-align:center;padding:4px}
+  table.grid select{width:100%;min-width:76px;padding:4px}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#1f2328;color:#fff;padding:8px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;z-index:9}
+  #toast.show{opacity:1}
+  #loginMask{position:fixed;inset:0;background:rgba(246,247,249,.96);display:flex;align-items:center;justify-content:center;z-index:20}
+  .login-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:28px 32px;width:340px;box-shadow:0 6px 24px rgba(0,0,0,.06)}
+  .login-box h2{margin:0 0 6px;font-size:17px}
+  .login-box input{width:100%;margin-bottom:10px}
+  .login-box button{width:100%}
+  #loginErr{color:var(--danger);min-height:20px;margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>ClassIsland 集控管理控制台</h1>
+  <span class="badge" id="org">—</span>
+  <span class="muted" id="stat">—</span>
+  <span style="flex:1"></span>
+  <input id="token" placeholder="管理令牌" style="width:180px">
+  <button class="ghost" id="saveToken">保存令牌</button>
+</header>
+
+<div id="loginMask" class="hidden">
+  <div class="login-box">
+    <h2>管理员登录</h2>
+    <p class="muted" id="loginHint">请输入管理员账号密码</p>
+    <input id="loginUser" placeholder="用户名" autocomplete="username">
+    <input id="loginPass" type="password" placeholder="密码" autocomplete="current-password">
+    <button id="loginBtn">登录</button>
+    <div id="loginErr" class="muted"></div>
+  </div>
+</div>
+
+<main>
+  <div class="tabs">
+    <div class="tab active" data-tab="planner">课表编辑</div>
+    <div class="tab" data-tab="import">导入</div>
+    <div class="tab" data-tab="cloud">云服务</div>
+    <div class="tab" data-tab="clients">客户端</div>
+    <div class="tab" data-tab="objects">档案（JSON）</div>
+    <div class="tab" data-tab="groups">分组与分配</div>
+  </div>
+
+  <!-- ============ 云服务 ============ -->
+  <section id="tab-cloud" class="hidden">
+    <div class="card">
+      <h2>云端备份</h2>
+      <p class="muted">把服务器上的课表、时间表、科目、策略等档案打包存到云端。
+        重新部署或换机器后，用云端备份一键恢复，避免配置丢失。</p>
+
+      <div id="cloudLoginBox">
+        <div class="row">
+          <input id="phoneInput" placeholder="手机号" style="width:180px" autocomplete="tel">
+          <button class="ghost" id="sendCodeBtn" type="button">获取验证码</button>
+        </div>
+        <div class="row">
+          <input id="codeInput" placeholder="短信验证码" style="width:180px" autocomplete="one-time-code">
+          <button id="cloudLoginBtn" type="button">登录 / 注册</button>
+        </div>
+        <p class="muted" id="codeHint">未注册手机号将自动创建账号</p>
+      </div>
+
+      <div id="cloudAppBox" class="hidden">
+        <div class="row">
+          <span>云端账号：<strong id="cloudUser"></strong></span>
+          <span style="flex:1"></span>
+          <button class="ghost" id="cloudLogoutBtn">退出</button>
+        </div>
+        <div class="row">
+          <button id="backupBtn">备份当前配置到云端</button>
+          <span class="muted">或</span>
+          <input type="file" id="cloudZipInput" accept=".zip,.json">
+          <button class="ghost" id="uploadZipBtn">上传文件到云端</button>
+        </div>
+        <table>
+          <thead><tr><th>文件名</th><th style="width:100px">大小</th><th style="width:180px">时间</th><th style="width:220px">操作</th></tr></thead>
+          <tbody id="cloudList"><tr><td colspan="4" class="muted">加载中…</td></tr></tbody>
+        </table>
+      </div>
+      <div id="cloudErr" class="muted" style="min-height:22px"></div>
+    </div>
+  </section>
+
+  <!-- ============ 导入 ============ -->
+  <section id="tab-import" class="hidden">
+    <div class="card">
+      <h2>上传 ClassIsland 备份压缩包</h2>
+      <p class="muted">选择 ClassIsland「设置 → 备份与恢复」导出的 .zip，导入后会覆盖现有的科目、时间表、课表、策略、设置与组件布局。</p>
+      <div class="row">
+        <input type="file" id="backupFile" accept=".zip">
+        <button id="uploadBackup">上传并导入</button>
+      </div>
+      <div id="backupResult" class="muted"></div>
+    </div>
+
+    <div class="card">
+      <h2>上传单个档案文件</h2>
+      <p class="muted">上传已经做好的课表 / 时间表 / 科目文件，支持 <strong>JSON 与 YAML（.yaml / .yml）</strong>（可以是完整档案，也可以是单独导出的文件）。</p>
+      <div class="row">
+        <select id="importKind">
+          <option value="classplan">课表</option>
+          <option value="timelayout">时间表</option>
+          <option value="subject">科目</option>
+          <option value="policy">策略</option>
+          <option value="settings">默认设置</option>
+          <option value="components">组件布局</option>
+        </select>
+        <input type="file" id="profileFile" accept=".json,.yaml,.yml">
+        <button id="uploadProfile">上传</button>
+      </div>
+      <div id="profileResult" class="muted"></div>
+    </div>
+
+    <div class="card">
+      <h2>导出当前配置</h2>
+      <p class="muted">把服务器上现有的档案下载到本地保存，需要迁移或备份时使用。</p>
+      <div class="row" id="exportRow"></div>
+    </div>
+  </section>
+
+  <!-- ============ 课表编辑器 ============ -->
+  <section id="tab-planner">
+    <div class="card">
+      <h2>① 时间表</h2>
+      <div class="row">
+        <select id="layoutSelect" style="min-width:220px"></select>
+        <button class="ghost" id="renameLayout">重命名</button>
+        <button class="danger" id="delLayout">删除</button>
+        <span style="flex:1"></span>
+        <button class="ghost" id="addLayout">新建时间表</button>
+      </div>
+      <table>
+        <thead><tr><th style="width:50px">序</th><th style="width:130px">开始</th><th style="width:130px">结束</th><th style="width:120px">类型</th><th style="width:120px">隐藏默认科目</th><th style="width:80px">操作</th></tr></thead>
+        <tbody id="tpRows"></tbody>
+      </table>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost" id="addTimePoint">添加时间点</button>
+        <button id="saveLayout">保存并发布</button>
+        <span class="muted">修改起止时间会自动衔接相邻时间点</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>② 科目</h2>
+      <table>
+        <thead><tr><th>名称</th><th style="width:90px">简称</th><th style="width:160px">任课教师</th><th style="width:110px">室外课</th><th style="width:80px">操作</th></tr></thead>
+        <tbody id="subjectRows"></tbody>
+      </table>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost" id="addSubject">添加科目</button>
+        <button id="saveSubject">保存并发布</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>③ 课表</h2>
+      <div class="row">
+        <label class="muted">使用时间表</label>
+        <select id="cpLayout" style="min-width:220px"></select>
+        <label class="muted">周次</label>
+        <select id="cpWeekDiv">
+          <option value="0">全周</option>
+          <option value="1">单周</option>
+          <option value="2">双周</option>
+        </select>
+        <button class="ghost" id="reloadGrid">重新载入</button>
+        <span style="flex:1"></span>
+        <button id="saveGrid">保存并发布课表</button>
+      </div>
+      <div id="gridBox"></div>
+      <p class="muted">每一行是一个上课节次（课间自动留空），列为周一至周日；留空的星期不会生成课表。
+      若某天单双周课程不同，用上方「周次」切换后分别排课（会生成两张课表，如「周一 单周」「周一 双周」）。</p>
+    </div>
+  </section>
+
+  <!-- ============ 客户端 ============ -->
+  <section id="tab-clients" class="hidden">
+    <div class="card">
+      <div class="row"><strong>已注册实例</strong><span style="flex:1"></span>
+        <button class="ghost" id="refreshClients">刷新</button></div>
+      <table>
+        <thead><tr><th>实例 ID（CUID）</th><th>班级标识</th><th>MAC</th><th>分组</th><th>最近心跳</th><th>状态</th><th>操作</th></tr></thead>
+        <!-- 由 JS 渲染 -->
+        <tbody id="clientRows"><tr><td colspan="7" class="muted">加载中…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 档案 JSON ============ -->
+  <section id="tab-objects" class="hidden">
+    <div class="card">
+      <div class="row">
+        <strong>档案</strong>
+        <select id="objKind">
+          <option value="classplan">课表</option>
+          <option value="timelayout">时间表</option>
+          <option value="subject">科目</option>
+          <option value="policy">策略</option>
+          <option value="settings">默认设置</option>
+          <option value="components">组件设置</option>
+          <option value="credentials">凭据</option>
+        </select>
+        <button class="ghost" id="loadObjects">加载</button>
+        <span style="flex:1"></span>
+        <input id="newName" placeholder="新档案名称" style="width:180px">
+        <button id="createObject">新建</button>
+      </div>
+      <table>
+        <thead><tr><th>ID</th><th>名称</th><th>版本</th><th>更新时间</th><th>操作</th></tr></thead>
+        <tbody id="objRows"><tr><td colspan="5" class="muted">请选择类型并加载</td></tr></tbody>
+      </table>
+    </div>
+    <div class="card hidden" id="editor">
+      <div class="row"><strong>编辑档案内容（JSON）</strong><span class="muted" id="editingId"></span></div>
+      <textarea id="payload"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="savePayload">保存（版本 +1）</button>
+        <button class="ghost" id="cancelEdit">取消</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 分组 ============ -->
+  <section id="tab-groups" class="hidden">
+    <div class="card">
+      <div class="row"><strong>分组</strong>
+        <input id="newGroup" placeholder="新分组名称" style="width:180px">
+        <button id="createGroup">新建分组</button>
+        <button class="ghost" id="loadGroups">刷新</button></div>
+      <table>
+        <thead><tr><th>ID</th><th>名称</th><th>操作</th></tr></thead>
+        <tbody id="groupRows"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="row"><strong>把档案分配给分组</strong></div>
+      <div class="row">
+        <select id="assignGroup"></select>
+        <select id="assignKind">
+          <option value="classplan">课表</option>
+          <option value="timelayout">时间表</option>
+          <option value="subject">科目</option>
+          <option value="policy">策略</option>
+          <option value="settings">默认设置</option>
+        </select>
+        <input id="assignObjectId" placeholder="档案 ID" style="width:120px">
+        <button id="doAssign">分配</button>
+      </div>
+      <p class="muted">未分配的分组会自动回退到该类型的第一个档案。</p>
+    </div>
+  </section>
+</main>
+
+<div id="toast"></div>
+<script>
+/* ---------- 公共部分 ---------- */
+const $ = s => document.querySelector(s);
+let TOKEN = localStorage.getItem('cims_token') || '';
+$('#token').value = TOKEN;
+
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2400);
+}
+async function api(path, opts={}){
+  const sep = path.includes('?') ? '&' : '?';
+  const url = path + (TOKEN ? sep + 'token=' + encodeURIComponent(TOKEN) : '');
+  // no-store：登录状态查询绝不能拿到缓存的旧响应（否则登录成功后遮罩又被显示回来）
+  const res = await fetch(url, Object.assign({ cache: 'no-store' }, opts));
+  if(res.status === 401){
+    window.__needLogin = true;
+    toast('未登录或登录已失效');
+    throw new Error('unauthorized');
+  }
+  window.__needLogin = false;
+  const text = await res.text();
+  try { return JSON.parse(text); } catch { return text; }
+}
+window.CIMS = { api, toast };
+function fmtTime(ts){
+  if(!ts) return '—';
+  return new Date(ts*1000).toLocaleString('zh-CN');
+}
+
+$('#saveToken').onclick = () => { TOKEN = $('#token').value.trim(); localStorage.setItem('cims_token', TOKEN); toast('令牌已保存'); loadAll(); };
+
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  ['planner','import','cloud','clients','objects','groups'].forEach(k => $('#tab-'+k).classList.toggle('hidden', k !== t.dataset.tab));
+});
+
+async function loadStatus(){
+  const s = await api('/api/v1/admin/online');
+  $('#stat').textContent = '在线实例 ' + (s.online ? s.online.length : 0) + ' 个';
+  window.__online = new Set(s.online || []);
+}
+async function loadClients(){
+  try{
+    const list = await api('/api/v1/admin/clients');
+    $('#clientRows').innerHTML = list.map(c => `<tr>
+      <td class="mono">${c.CUID}</td><td>${c.ClientID||'—'}</td><td class="mono">${c.MAC||'—'}</td>
+      <td>${c.GroupID}</td><td>${fmtTime(c.LastSeen)}</td>
+      <td><span class="pill ${window.__online && window.__online.has(c.CUID)?'on':'off'}">${window.__online && window.__online.has(c.CUID)?'在线':'离线'}</span></td>
+      <td><button class="ghost" onclick="cmd('${c.CUID}',103)">同步数据</button>
+      <button class="ghost" onclick="cmd('${c.CUID}',101)">重启</button>
+      <button class="ghost" onclick="notify('${c.CUID}')">发通知</button>
+      <button class="danger" onclick="delClient('${c.CUID}')">删除</button></td></tr>`).join('')
+      || '<tr><td colspan="7" class="muted">还没有实例加入集控</td></tr>';
+  }catch(e){ $('#clientRows').innerHTML = '<tr><td colspan="7" class="muted">加载失败</td></tr>'; }
+}
+async function cmd(cuid, type){
+  const r = await api('/api/v1/admin/clients/' + cuid + '/command', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type})});
+  toast(r.delivered ? '已实时下发' : '已加入队列，实例上线后生效');
+}
+async function delClient(cuid){
+  if(!confirm('删除该实例记录？用于清理已退出或重复的旧实例，该操作不可撤销。')) return;
+  try{
+    await api('/api/v1/admin/clients/' + cuid, {method:'DELETE'});
+    toast('实例已删除'); loadClients();
+  }catch(e){ toast('删除失败'); }
+}
+window.delClient = delClient;
+
+async function notify(cuid){
+  const msg = prompt('通知内容：', '请同学们做好准备');
+  if(!msg) return;
+  await api('/api/v1/admin/clients/' + cuid + '/command', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:102,payload:msg})});
+  toast('已下发通知命令');
+}
+window.cmd = cmd; window.notify = notify;
+
+async function loadObjects(){
+  const kind = $('#objKind').value;
+  const list = await api('/api/v1/admin/objects?kind=' + kind);
+  $('#objRows').innerHTML = (list||[]).map(o => `<tr><td>${o.ID}</td><td>${o.Name}</td><td>${o.Version}</td><td>${fmtTime(o.UpdatedAt)}</td>
+    <td><button class="ghost" onclick="edit(${o.ID})">编辑</button> <button class="danger" onclick="del(${o.ID})">删除</button></td></tr>`).join('')
+    || '<tr><td colspan="5" class="muted">该类型暂无档案</td></tr>';
+}
+let editingId = 0;
+async function edit(id){
+  const o = await api('/api/v1/admin/objects/' + id);
+  editingId = id;
+  $('#editingId').textContent = '#' + id + ' ' + o.Name + '（版本 ' + o.Version + '）';
+  $('#payload').value = o.Payload;
+  $('#editor').classList.remove('hidden');
+}
+async function del(id){
+  if(!confirm('确定删除档案 #' + id + '？')) return;
+  await api('/api/v1/admin/objects/' + id, {method:'DELETE'});
+  toast('已删除'); loadObjects();
+}
+window.edit = edit; window.del = del;
+$('#loadObjects').onclick = loadObjects;
+$('#createObject').onclick = async () => {
+  const name = $('#newName').value.trim();
+  if(!name) return toast('请填写名称');
+  await api('/api/v1/admin/objects', {method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({kind:$('#objKind').value, name, payload:'{}'})});
+  $('#newName').value=''; toast('已创建'); loadObjects();
+};
+$('#savePayload').onclick = async () => {
+  await api('/api/v1/admin/objects/' + editingId, {method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({payload:$('#payload').value})});
+  toast('已保存，版本已递增'); $('#editor').classList.add('hidden'); loadObjects();
+};
+$('#cancelEdit').onclick = () => $('#editor').classList.add('hidden');
+
+async function loadGroups(){
+  const list = await api('/api/v1/admin/groups');
+  $('#groupRows').innerHTML = (list||[]).map(g => `<tr><td>${g.ID}</td><td>${g.Name}</td><td></td></tr>`).join('');
+  $('#assignGroup').innerHTML = (list||[]).map(g => `<option value="${g.ID}">${g.ID} - ${g.Name}</option>`).join('');
+}
+$('#loadGroups').onclick = loadGroups;
+$('#createGroup').onclick = async () => {
+  const name = $('#newGroup').value.trim();
+  if(!name) return toast('请填写名称');
+  await api('/api/v1/admin/groups', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+  $('#newGroup').value=''; toast('已创建'); loadGroups();
+};
+$('#doAssign').onclick = async () => {
+  const gid = $('#assignGroup').value, kind = $('#assignKind').value, oid = $('#assignObjectId').value.trim();
+  if(!oid) return toast('请填写档案 ID');
+  await api('/api/v1/admin/groups/' + gid + '/assign', {method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({kind, objectId:parseInt(oid,10)})});
+  toast('已分配');
+};
+$('#refreshClients').onclick = loadClients;
+
+async function loadAll(){
+  await loadStatus(); await loadClients(); await loadGroups();
+  fetch('/').then(r=>r.json()).then(d => $('#org').textContent = d.organization || '—').catch(()=>{});
+}
+
+/* ---------- 登录 ---------- */
+async function checkSession(){
+  try{
+    const s = await api('/api/v1/admin/session');
+    if(s.required && !s.ok){
+      $('#loginUser').value = s.username || 'admin';
+      $('#loginMask').classList.remove('hidden');
+      return false;
+    }
+    $('#loginMask').classList.add('hidden');
+    return true;
+  }catch(e){ $('#loginMask').classList.add('hidden'); return true; }
+}
+$('#loginBtn').onclick = async () => {
+  const btn = $('#loginBtn'), err = $('#loginErr');
+  err.textContent = '正在登录…';
+  btn.disabled = true;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 15000);
+  try{
+    const r = await fetch('/api/v1/admin/login', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username: $('#loginUser').value.trim(), password: $('#loginPass').value}),
+      signal: ctl.signal,
+    });
+    const text = await r.text();
+    let d = {};
+    try { d = JSON.parse(text); } catch (e) { d = {}; }
+    if(!r.ok){
+      err.textContent = d.message || ('登录失败（HTTP ' + r.status + '）');
+      return;
+    }
+    if(!d.token){
+      err.textContent = '登录响应缺少令牌，请重试';
+      return;
+    }
+    TOKEN = d.token;
+    localStorage.setItem('cims_token', TOKEN);
+    $('#token').value = TOKEN;
+    $('#loginMask').classList.add('hidden');
+    toast('登录成功');
+    err.textContent = '';
+    window.__needLogin = false;
+    boot();
+  }catch(e){
+    err.textContent = (e && e.name === 'AbortError')
+      ? '登录超时（15 秒无响应）：请确认是在浏览器里直接打开本页，而不是在预览面板中'
+      : ('登录请求失败：' + (e && e.message ? e.message : e));
+  }finally{
+    clearTimeout(timer);
+    btn.disabled = false;
+  }
+};
+$('#loginPass').onkeydown = e => { if(e.key === 'Enter') $('#loginBtn').click(); };
+$('#loginUser').onkeydown = e => { if(e.key === 'Enter') $('#loginPass').focus(); };
+
+/* ---------- 上传导入 ---------- */
+function uploadUrl(path){
+  return path + (TOKEN ? '?token=' + encodeURIComponent(TOKEN) : '');
+}
+$('#uploadBackup').onclick = async () => {
+  const f = $('#backupFile').files[0];
+  if(!f) return toast('请选择备份 .zip 文件');
+  const fd = new FormData(); fd.append('file', f);
+  $('#backupResult').textContent = '上传中…';
+  try{
+    const r = await fetch(uploadUrl('/api/v1/admin/import/backup'), {method:'POST', body:fd});
+    const d = await r.json();
+    if(!r.ok){ $('#backupResult').textContent = '导入失败：' + (d.message || ''); return; }
+    $('#backupResult').textContent = '导入完成：' + JSON.stringify(d.imported);
+    toast('备份已导入'); loadObjects(); Planner.init();
+  }catch(e){ $('#backupResult').textContent = '导入失败：' + e; }
+};
+$('#uploadProfile').onclick = async () => {
+  const f = $('#profileFile').files[0];
+  if(!f) return toast('请选择 JSON 文件');
+  const fd = new FormData();
+  fd.append('kind', $('#importKind').value);
+  fd.append('file', f);
+  $('#profileResult').textContent = '上传中…';
+  try{
+    const r = await fetch(uploadUrl('/api/v1/admin/import/profile'), {method:'POST', body:fd});
+    const d = await r.json();
+    if(!r.ok){ $('#profileResult').textContent = '导入失败：' + (d.message || ''); return; }
+    $('#profileResult').textContent = '导入完成（' + d.action + '）';
+    toast('档案已导入'); Planner.init();
+  }catch(e){ $('#profileResult').textContent = '导入失败：' + e; }
+};
+
+/* ---------- 导出 ---------- */
+const EXPORT_FILES = {
+  classplan:'classplans.json', timelayout:'timelayouts.json', subject:'subjects.json',
+  policy:'policy.json', settings:'settings.json', components:'components.json'
+};
+function renderExport(){
+  const kinds = [['classplan','课表'],['timelayout','时间表'],['subject','科目'],
+                 ['policy','策略'],['settings','默认设置'],['components','组件布局']];
+  $('#exportRow').innerHTML = kinds.map(([k,label]) =>
+    `<a href="/${EXPORT_FILES[k]}" target="_blank"><button class="ghost">下载${label}</button></a>`).join('');
+}
+
+// 先假定可以直接访问：真正去拉数据，只有接口返回 401 时才弹出登录框。
+// 这样登录状态查询接口的任何异常（缓存、代理差异）都不会把用户挡在门外。
+async function boot(){
+  renderExport();
+  $('#loginMask').classList.add('hidden');
+  try {
+    await loadAll();
+    await Planner.init();
+    if (window.CloudPanel) { try { await CloudPanel.refresh(); } catch (e) { console.warn('云服务面板初始化失败', e.message); } }
+  } catch (e) {
+    if (window.__needLogin) {
+      $('#loginMask').classList.remove('hidden');
+    } else {
+      console.warn('初始化失败', e && e.message ? e.message : e);
+    }
+  }
+}
+boot();
+setInterval(() => { if($('#loginMask').classList.contains('hidden')) loadAll(); }, 15000);
+</script>
+<script src="planner.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
+<script src="cloud.js"></script>
+</body>
+</html>

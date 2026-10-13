@@ -1,0 +1,13 @@
+syntax = "proto3";
+package ClassIsland.Shared.Protobuf.Enum;
+option csharp_namespace = "ClassIsland.Shared.Protobuf.Enum";
+
+// 注：原文件此处为 Unspecified，与同包内 Retcode.Unspecified 冲突
+// （protobuf 枚举值遵循 C++ 作用域规则，会落在枚举的外层作用域），
+// 因此在本仓库副本中重命名为 UnspecifiedOperation，仅影响生成的常量名。
+enum ListItemUpdateOperations {
+  UnspecifiedOperation = 0;
+  Add = 1;
+  Update = 2;
+  Remove = 3;
+}
